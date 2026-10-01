@@ -26,3 +26,7 @@ alter table profiles add column if not exists telegram_enabled boolean not null 
 -- ntfy support (if you already ran the schema above, run just these two lines):
 alter table profiles add column if not exists ntfy_topic text;
 alter table profiles add column if not exists ntfy_enabled boolean not null default false;
+
+-- Follow-up reminders (run these two lines if the tables already exist):
+alter table profiles add column if not exists sent_count int not null default 0;
+alter table profiles add column if not exists last_sent_at timestamptz;
