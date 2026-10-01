@@ -12,4 +12,15 @@ export async function syncUp(uid, s, today, full) {
   });
   const { error: e2 } = await supabase.from('days').upsert(dates.map((date) => ({ user_id: uid, date, tasks: s.days[date] })));
   if (e1 || e2) console.error('sync failed', e1 || e2);
+  return !(e1 || e2);
+}
+
+// Read this user's data back from the server (returns null on failure so we never overwrite server data with stale local data).
+export async function pullDown(uid) {
+  const [p, d] = await Promise.all([
+    supabase.from('profiles').select('defaults,remind_time,ntfy_topic,ntfy_enabled').eq('user_id', uid).maybeSingle(),
+    supabase.from('days').select('date,tasks').eq('user_id', uid),
+  ]);
+  if (p.error || d.error) { console.error('pull failed', p.error || d.error); return null; }
+  return { profile: p.data, days: Object.fromEntries((d.data || []).map((r) => [r.date, r.tasks])) };
 }

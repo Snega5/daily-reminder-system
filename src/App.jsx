@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
-import { load, save, toKey, fromKey, ensureDay, toggle, rename, doneCount, streak } from './lib';
-import { supabase, syncUp } from './supabase';
+import { useEffect, useRef, useState } from 'react';
+import { load, save, mergeRemote, toKey, fromKey, ensureDay, toggle, rename, doneCount, streak } from './lib';
+import { supabase, syncUp, pullDown } from './supabase';
 import Account from './Account';
 
 const greet = () => { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'; };
@@ -20,12 +20,32 @@ export default function App() {
     return () => data.subscription.unsubscribe();
   }, []);
   const uid = session?.user?.id;
-  useEffect(() => { if (uid) syncUp(uid, s, today, true); }, [uid]); // full upload once per sign-in
+  const dirty = useRef(false);      // true = local edits not yet saved to the server
+  const pushedAll = useRef(false);
+  const [synced, setSynced] = useState(false);
+  const edit = (fn) => { dirty.current = true; setS(fn); };
+  const pull = async () => {
+    if (!uid || dirty.current) return;
+    const r = await pullDown(uid);
+    if (r) { setS((x) => mergeRemote(x, r)); setSynced(true); }
+  };
+  // On sign-in and whenever the app comes back to the foreground: load the server copy first.
   useEffect(() => {
-    if (!uid) return;
-    const id = setTimeout(() => syncUp(uid, s, today, false), 800); // debounced
+    if (!uid) { setSynced(false); return; }
+    pull();
+    const onVis = () => { if (document.visibilityState === 'visible') pull(); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [uid]);
+  // Push local changes (debounced), but only after the first successful pull.
+  useEffect(() => {
+    if (!uid || !synced) return;
+    const id = setTimeout(async () => {
+      const ok = await syncUp(uid, s, today, !pushedAll.current);
+      if (ok) { pushedAll.current = true; dirty.current = false; }
+    }, 800);
     return () => clearTimeout(id);
-  }, [s, uid, today]);
+  }, [s, uid, today, synced]);
 
   useEffect(() => save(s), [s]);
 
@@ -59,7 +79,7 @@ export default function App() {
   if (!tasks) return null;
   const done = doneCount(tasks);
   const pct = Math.round((done / 3) * 100);
-  const setSetting = (patch) => setS((x) => ({ ...x, settings: { ...x.settings, ...patch } }));
+  const setSetting = (patch) => edit((x) => ({ ...x, settings: { ...x.settings, ...patch } }));
 
   async function enableNotify(on) {
     if (on && 'Notification' in window && Notification.permission !== 'granted') {
@@ -119,11 +139,11 @@ export default function App() {
       <section className="card">
         {tasks.map((t, i) => (
           <label key={i} className="task">
-            <input type="checkbox" checked={t.done} onChange={() => setS((x) => toggle(x, today, i))} />
+            <input type="checkbox" checked={t.done} onChange={() => edit((x) => toggle(x, today, i))} />
             <input className={t.done ? 'name done' : 'name'} defaultValue={t.name} key={t.name}
               maxLength={60} aria-label={`Task ${i + 1} name`}
               onClick={(e) => e.preventDefault()}
-              onBlur={(e) => setS((x) => rename(x, today, i, e.target.value))} />
+              onBlur={(e) => edit((x) => rename(x, today, i, e.target.value))} />
           </label>
         ))}
         <div className="bar"><div style={{ width: pct + '%' }} /></div>

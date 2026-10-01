@@ -31,6 +31,16 @@ export function streak(days, today) {
   while (doneCount(days[k]) === 3) { n++; k = addDays(k, -1); }
   return n;
 }
+// Server data wins per date; dates that exist only locally are kept. Profile (names/time/topic) comes from the server if it exists.
+export function mergeRemote(s, remote) {
+  const next = { ...s, days: { ...s.days, ...remote.days } };
+  const p = remote.profile;
+  if (p) {
+    next.defaults = p.defaults;
+    next.settings = { ...s.settings, time: p.remind_time, topic: p.ntfy_topic || '', ntfy: !!p.ntfy_enabled };
+  }
+  return next;
+}
 export function load() {
   try {
     const r = JSON.parse(localStorage.getItem(KEY));

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { toKey, addDays, emptyState, ensureDay, toggle, rename, streak, doneCount } from './lib.js';
+import { mergeRemote, toKey, addDays, emptyState, ensureDay, toggle, rename, streak, doneCount } from './lib.js';
 
 test('date key uses local date and rolls over at midnight', () => {
   assert.equal(toKey(new Date(2026, 8, 30, 23, 59, 59)), '2026-09-30');
@@ -29,4 +29,18 @@ test('streak logic', () => {
   assert.equal(streak({ '2026-09-28': full, '2026-09-29': full, '2026-09-30': full }, '2026-09-30'), 3);
   assert.equal(streak({ '2026-09-27': full, '2026-09-29': full }, '2026-09-29'), 1); // missing day breaks it
   assert.equal(streak({ '2026-09-29': part }, '2026-09-30'), 0);
+});
+
+test('mergeRemote: server wins per date, local-only dates kept, profile applied', () => {
+  const full = [{ name: 'A', done: true }, { name: 'B', done: true }, { name: 'C', done: true }];
+  const part = [{ name: 'A', done: true }, { name: 'B', done: false }, { name: 'C', done: false }];
+  let s = { ...emptyState(), days: { '2026-09-29': part, '2026-09-28': full } };
+  const m = mergeRemote(s, { days: { '2026-09-29': full }, profile: { defaults: ['X', 'Y', 'Z'], remind_time: '21:30', ntfy_topic: 'daily3-abc', ntfy_enabled: true } });
+  assert.equal(doneCount(m.days['2026-09-29']), 3);
+  assert.equal(doneCount(m.days['2026-09-28']), 3);
+  assert.deepEqual(m.defaults, ['X', 'Y', 'Z']);
+  assert.equal(m.settings.time, '21:30');
+  assert.equal(m.settings.topic, 'daily3-abc');
+  const m2 = mergeRemote(s, { days: {}, profile: null });
+  assert.equal(m2.settings.time, s.settings.time);
 });
